@@ -1,3 +1,7 @@
-main2.py
+visualisation.py
 test.py
 .DS_Store
+READ.ME
+.env
+binance_prices.csv
+upbit_prices.csv
