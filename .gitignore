@@ -5,3 +5,4 @@ READ.ME
 .env
 binance_prices.csv
 upbit_prices.csv
+exchange_rate_hour.json
