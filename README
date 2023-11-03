@@ -1,0 +1,17 @@
+This code is a Telegram notification bot for pinging arbitrage opportunities for the Korean Crypto Exchange Upbit. 
+
+The code includes information on price % difference, available liquidity at state prices, and real-life profit percentages. 
+
+There has been several times where tokens on Upbit trade for significantly higher than the rest of the market, partially due to difficulty in opening an account if individuals are not from Korea. 
+
+The idea behind the calculation of real-life profit percentages is mimicking the profit that would be gained if an individual sent a particular token to Upbit, converted that token to ETH and sent that ETH from Upbit. Since ETH prices are also higher on Upbit, profits out are discounted. 
+
+ETH is chosen because it has high liquidity, and does not take as long as BTC for transactions to execute. 
+
+To use : 
+
+API keys for Telegram and exchange rate (https://exchangeratesapi.io/ is used here) is needed (saved in .env file in parent folder). 
+
+The delisted_binance.json file records tickers that are no longer tracking the correct prices, but is still present in the Binance API call (https://api.binance.com/api/v3/ticker/price)
+This file needs to be updated if Binance continues delisting. 
+
