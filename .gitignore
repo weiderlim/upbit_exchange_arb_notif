@@ -1,8 +1,11 @@
-visualisation.py
-test.py
 .DS_Store
-READ.ME
 .env
+READ.ME
 binance_prices.csv
 upbit_prices.csv
 exchange_rate_hour.json
+visualisation.py
+test.py
+
+
+
