@@ -248,7 +248,7 @@ def get_prices_binance() :
 
 def check_price_diff (df_upbit, df_binance) : 
     '''
-    Accepts list of tickers for two exchanges, maps the prices together  
+    Accepts list of tickers for two exchanges, maps the tickers, and sends notification when triggered. 
     '''
 
     df_combined = pd.merge(df_upbit, df_binance, on='base_ticker', how='left')
@@ -263,25 +263,40 @@ def check_price_diff (df_upbit, df_binance) :
     df_combined['ask_pct_diff'] = abs(df_combined['ask_usd_diff'] / df_combined['price_usd_binance']) 
 
     # get ask price pct difference of ETH on Upbit
-    upbit_eth_ask_price_pct = df_combined[df_combined['base_ticker'].str.contains('ETH')]['ask_pct_diff'].loc[0]
+    for index, row in df_combined.iterrows() : 
+        # upbit_eth_ask_price_pct = df_combined[df_combined['base_ticker'].str.contains('ETH')]['ask_pct_diff'].loc[0]
+        if df_combined.loc[index, 'base_ticker'] == 'ETH' : 
+            upbit_eth_ask_price_pct = df_combined.loc[index, 'ask_pct_diff']
+            break 
+
+    # setting notification trigger so we know the script is actually running. 
+    trigger = 0
+
+    profit_pct_lim = 1
 
     for index, row in df_combined.iterrows() : 
         # case when upbit price > binance
         if df_combined.loc[index, 'usd_diff'] > 0 : 
-            token_upbit_delta_pct = df_combined.loc[index, 'pct_diff']
+            token_upbit_delta_pct = df_combined.loc[index, 'pct_diff'] 
 
-            profit_pct =  100 * token_upbit_delta_pct * (1 - upbit_eth_ask_price_pct)
+            profit_pct =  100 * (token_upbit_delta_pct + 1) * (1 - upbit_eth_ask_price_pct) - 100
 
-            print(df_combined.loc[index, 'base_ticker'], abs(df_combined.loc[index, 'pct_diff']) * 100, profit_pct)
+            print(df_combined.loc[index, 'base_ticker'], abs(df_combined.loc[index, 'pct_diff']) * 100, profit_pct, upbit_eth_ask_price_pct)
             
             # If profit_pct > x, then we want notification. 
-            if profit_pct > 2.5 : 
+            if profit_pct > profit_pct_lim : 
+                trigger = 1
                 message1 = '{} - Upbit is higher than Binance by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], abs(df_combined.loc[index, 'pct_diff']) * 100)
                 message2 = 'Absolute Diff - $ {:.6f}'.format(abs(df_combined.loc[index, 'usd_diff']))
                 message3 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
                 message4 = 'Upbit USD Liquidity Close to stated price - $ {:.2f}'.format(df_combined.loc[index, 'lqtt_usd'])
                 tg_notif(message1 + '\n\n' + message2 + '\n\n' + message3 + '\n\n' + message4 + '\n\n')
     
+    if trigger == 0 : 
+        tg_notif("No tickers within profit pct range of > {:.2f}".format(profit_pct_lim))
+
+    # for troubleshooting purposes 
+    # df_combined.to_csv('files/df_combined.csv')
 
 if __name__ == '__main__' : 
 
@@ -290,8 +305,6 @@ if __name__ == '__main__' :
 
     check_price_diff(df_upbit, df_binance)
 
-    # tg_notif('hello! \n this is my name \n hi')
-    # tg_notif('hello. \n' + 'next line')
 
 
 
