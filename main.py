@@ -306,7 +306,9 @@ def execute() :
 
 
 if __name__ == '__main__' : 
+    tg_notif('cron job started')
     execute()
+    tg_notif('cron job ended')
 
 
 
