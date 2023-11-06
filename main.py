@@ -179,7 +179,7 @@ def get_prices_upbit() :
     threads = []
 
     ticker_list = get_tickers_upbit()
-    ticker_window_len = 2
+    ticker_window_len = 1
 
     while curr_ticker_index < len(ticker_list) : 
         for ticker in ticker_list[curr_ticker_index : curr_ticker_index + ticker_window_len]:
