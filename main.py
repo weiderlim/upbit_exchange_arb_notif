@@ -163,6 +163,8 @@ def get_tickers_upbit () :
 
 
 def get_prices_upbit() :     
+    tg_notif('cron job 2')
+
     columns = ['ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt', 'curr_time']
     df = pd.DataFrame(columns=columns)
 
@@ -212,6 +214,8 @@ def get_prices_binance() :
     Returns price of all binance USDT pairs in a list. 
     '''
 
+    tg_notif('cron job 3')
+
     # Reads url and converts it into a readable JSON format
     url = "https://api.binance.com/api/v3/ticker/price"
 
@@ -247,7 +251,7 @@ def check_price_diff (df_upbit, df_binance) :
     '''
     Accepts list of tickers for two exchanges, maps the tickers, and sends notification when triggered. 
     '''
-    tg_notif('cron job 2')
+    tg_notif('cron job 4')
 
     df_combined = pd.merge(df_upbit, df_binance, on='base_ticker', how='left')
 
