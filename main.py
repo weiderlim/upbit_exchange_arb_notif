@@ -177,24 +177,26 @@ def get_prices_upbit() :
 
         print(ticker, bid_price, lqtt)
 
-    curr_ticker_index = 0
+    # curr_ticker_index = 0
 
-    threads = []
+    # threads = []
 
-    ticker_list = get_tickers_upbit()
-    ticker_window_len = 1
+    # ticker_list = get_tickers_upbit()
+    # ticker_window_len = 1
 
-    while curr_ticker_index < len(ticker_list) : 
-        for ticker in ticker_list[curr_ticker_index : curr_ticker_index + ticker_window_len]:
-            t = Thread(target=task, args=(ticker,))
-            threads.append(t)
-            t.start()
+    # while curr_ticker_index < len(ticker_list) : 
+    #     for ticker in ticker_list[curr_ticker_index : curr_ticker_index + ticker_window_len]:
+    #         t = Thread(target=task, args=(ticker,))
+    #         threads.append(t)
+    #         t.start()
 
-        # wait for the threads to complete
-        for t in threads:
-            t.join()
+    #     # wait for the threads to complete
+    #     for t in threads:
+    #         t.join()
 
-        curr_ticker_index += ticker_window_len
+    #     curr_ticker_index += ticker_window_len
+
+    task()
 
     curr_ex_rate = get_exchange_rate()
 
@@ -207,6 +209,8 @@ def get_prices_upbit() :
 
     # for troubleshoot purposes 
     df.to_csv('files/upbit_prices.csv', index=False) 
+
+    tg_notif('cron job 2.2')
 
     return df 
     
