@@ -247,6 +247,7 @@ def check_price_diff (df_upbit, df_binance) :
     '''
     Accepts list of tickers for two exchanges, maps the tickers, and sends notification when triggered. 
     '''
+    tg_notif('cron job 2')
 
     df_combined = pd.merge(df_upbit, df_binance, on='base_ticker', how='left')
 
@@ -305,9 +306,10 @@ def execute() :
 
 
 if __name__ == '__main__' : 
-    
-    execute()
 
+    tg_notif('cron job 1')
+    execute()
+    tg_notif('cron job ended')
 
 
 
