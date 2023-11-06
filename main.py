@@ -181,7 +181,7 @@ def get_prices_upbit() :
 
     # threads = []
 
-    # ticker_list = get_tickers_upbit()
+    ticker_list = get_tickers_upbit()
     # ticker_window_len = 1
 
     # while curr_ticker_index < len(ticker_list) : 
@@ -196,7 +196,8 @@ def get_prices_upbit() :
 
     #     curr_ticker_index += ticker_window_len
 
-    task()
+    for ticker in ticker_list : 
+        task(ticker)
 
     curr_ex_rate = get_exchange_rate()
 
