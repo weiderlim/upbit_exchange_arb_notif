@@ -159,6 +159,8 @@ def get_tickers_upbit () :
         if "KRW" in i['market'] : 
             ticker_list.append (i['market']) 
 
+    tg_notif('cron job 2.1')
+
     return ticker_list
 
 
