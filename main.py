@@ -30,11 +30,7 @@ def tg_notif (message) :
         'text' : message
         }
 
-    try :
-        response = requests.get(url, params=parameters)
-
-    except : 
-        print (response.text)
+    response = requests.get(url, params=parameters)
 
 
 def get_exchange_rate () : 
@@ -139,8 +135,10 @@ def call_api_upbit (ticker) :
     except : 
         if json_object['name'] == 'too_many_requests' : 
             print (ticker + '- too_many_request ERROR!')
+            tg_notif(ticker + '- too_many_request ERROR!')
         else : 
             print ('SOME OTHER ERROR')
+            tg_notif('SOME OTHER ERROR')
 
 
 def get_tickers_upbit () : 
@@ -293,17 +291,23 @@ def check_price_diff (df_upbit, df_binance) :
                 tg_notif(message1 + '\n\n' + message2 + '\n\n' + message3 + '\n\n' + message4 + '\n\n')
     
     if trigger == 0 : 
-        tg_notif("No tickers within profit pct range of > {:.2f}".format(profit_pct_lim))
+        tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim))
 
     # for troubleshooting purposes 
     # df_combined.to_csv('files/df_combined.csv')
 
-if __name__ == '__main__' : 
 
+@timing_decorator
+def execute() : 
     df_upbit = get_prices_upbit() 
     df_binance = get_prices_binance() 
 
     check_price_diff(df_upbit, df_binance)
+
+
+if __name__ == '__main__' : 
+    execute()
+
 
 
 
