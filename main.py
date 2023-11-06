@@ -162,7 +162,6 @@ def get_tickers_upbit () :
     return ticker_list
 
 
-@timing_decorator
 def get_prices_upbit() :     
     columns = ['ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt', 'curr_time']
     df = pd.DataFrame(columns=columns)
@@ -306,9 +305,9 @@ def execute() :
 
 
 if __name__ == '__main__' : 
-    tg_notif('cron job started')
+    
     execute()
-    tg_notif('cron job ended')
+
 
 
 
