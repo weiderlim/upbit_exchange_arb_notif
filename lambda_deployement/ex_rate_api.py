@@ -4,17 +4,14 @@ import time
 import os 
 import datetime 
 from pymongo import MongoClient
-from dotenv import load_dotenv
 
 
 def call_api_exchange_rate () : 
 
     url = "https://api.exchangeratesapi.io/v1/latest"
 
-    load_dotenv()
-
     parameters = {
-        'access_key' : os.getenv('exchange_rate_key'),
+        'access_key' : os.environ.get('exchange_rate_key'),
         'symbols' : 'USD, KRW'
         }
     
@@ -45,10 +42,13 @@ def write_sql (exchange_rate) :
         print(e)
 
 
-if __name__ == '__main__' : 
+def lambda_handler(event, context):
+    # TODO implement
     curr_exchange_rate = call_api_exchange_rate() 
     write_sql(curr_exchange_rate)
-
-
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Hello from Lambda!')
+    }
     
     

@@ -3,9 +3,8 @@ import json
 import time 
 import pandas as pd 
 import os 
-from threading import Thread
 from pymongo import MongoClient
-from dotenv import load_dotenv
+
 
 def timing_decorator(func):
     '''
@@ -22,7 +21,6 @@ def timing_decorator(func):
 
 
 def tg_notif (message) : 
-    load_dotenv()
     
     url = "https://api.telegram.org/bot{}/sendMessage".format(os.getenv('telegram_key'))
 
@@ -38,8 +36,6 @@ def get_exchange_rate () :
     '''
     Calling last row from the MongoDB collection. 
     '''
-
-    load_dotenv() 
 
     collection_name = os.environ.get('COLLECTION_NAME', 'transactions')
     mongo_conn_str = os.environ.get('MONGO_CONN_STR', 'local')
@@ -89,6 +85,9 @@ def call_api_upbit (ticker) :
         for order in orderbook[0:5] : 
             lqtt += order['bid_price'] * order['bid_size']
 
+        # emptying for RAM preservation
+        orderbook = []
+
         return bid_price, ask_price, lqtt
         
     except : 
@@ -133,9 +132,7 @@ def get_prices_upbit() :
 
         print(ticker, bid_price, lqtt)
 
-    ticker_list = get_tickers_upbit()
-
-    for ticker in ticker_list : 
+    for ticker in get_tickers_upbit() : 
         task(ticker)
 
     curr_ex_rate = get_exchange_rate()
@@ -242,10 +239,13 @@ def execute() :
     check_price_diff(df_upbit, df_binance)
 
 
-if __name__ == '__main__' : 
-
+def lambda_handler(event, context):
+    # TODO implement
     execute()
-
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Hello from Lambda!')
+    }
 
 
 
