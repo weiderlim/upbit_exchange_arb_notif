@@ -4,6 +4,7 @@ import time
 import pandas as pd 
 import os 
 from threading import Thread
+from pymongo import MongoClient
 from dotenv import load_dotenv
 
 def timing_decorator(func):
@@ -35,65 +36,23 @@ def tg_notif (message) :
 
 def get_exchange_rate () : 
     '''
-    Only want to call the exchange rate API if it has been an hour since the last call. This function creates a file with record of previous hour and exchange rate, and checks if it has ald been a hour. 
+    Calling last row from the MongoDB collection. 
     '''
 
-    # check if hour has not changed, if not then write new 
-    if os.path.exists(os.getcwd() + '/files/exchange_rate_hour.json') : 
-        
-        with open ('files/exchange_rate_hour.json', 'r') as file :     
-            output = json.load(file)
-            
-        if int(time.strftime("%H", time.localtime())) == output['previous_hour'] : 
-            return output['previous_exchange_rate']
-        
-        else : 
-            new_ex_rate = call_api_exchange_rate()
+    load_dotenv() 
 
-            new_data = {
-                'previous_hour' : int(time.strftime("%H", time.localtime())),
-                'previous_exchange_rate' : new_ex_rate
-            }
-            
-            data = json.dumps(new_data, indent=4)
-            
-            with open ('files/exchange_rate_hour.json', 'w') as file :     
-                file.write(data)     
-            
-            return new_ex_rate
-
-    else : 
-        new_ex_rate = call_api_exchange_rate()
-
-        new_data = {
-            'previous_hour' : int(time.strftime("%H", time.localtime())),
-            'previous_exchange_rate' : new_ex_rate
-        }
-        
-        data = json.dumps(new_data, indent=4)
-        
-        with open ('files/exchange_rate_hour.json', 'w') as file :     
-            file.write(data)     
-        
-        return new_ex_rate 
-
-
-def call_api_exchange_rate () : 
-
-    url = "https://api.exchangeratesapi.io/v1/latest"
-
-    load_dotenv()
-
-    parameters = {
-        'access_key' : os.getenv('exchange_rate_key'),
-        'symbols' : 'USD, KRW'
-        }
+    collection_name = os.environ.get('COLLECTION_NAME', 'transactions')
+    mongo_conn_str = os.environ.get('MONGO_CONN_STR', 'local')
+    db_name = os.environ.get('DB_NAME', 'upbit_tracker')
     
-    response = requests.get(url, params=parameters) 
+    client = MongoClient(mongo_conn_str)
+    db = client[db_name]
+    collection = db[collection_name]
 
-    json_object = json.loads(response.text) 
+    for x in collection.find() : 
+        curr_row = x
 
-    return json_object['rates']['KRW'] / json_object['rates']['USD']
+    return curr_row['exchange_rate']
 
 
 def call_api_upbit (ticker) : 
@@ -174,24 +133,7 @@ def get_prices_upbit() :
 
         print(ticker, bid_price, lqtt)
 
-    # curr_ticker_index = 0
-
-    # threads = []
-
     ticker_list = get_tickers_upbit()
-    # ticker_window_len = 1
-
-    # while curr_ticker_index < len(ticker_list) : 
-    #     for ticker in ticker_list[curr_ticker_index : curr_ticker_index + ticker_window_len]:
-    #         t = Thread(target=task, args=(ticker,))
-    #         threads.append(t)
-    #         t.start()
-
-    #     # wait for the threads to complete
-    #     for t in threads:
-    #         t.join()
-
-    #     curr_ticker_index += ticker_window_len
 
     for ticker in ticker_list : 
         task(ticker)
@@ -204,9 +146,6 @@ def get_prices_upbit() :
 
     # returns only the base pair for KRW pairs 
     df['base_ticker'] = df['ticker'].apply(lambda x : x.replace('KRW-', ''))
-
-    # for troubleshoot purposes 
-    df.to_csv('files/upbit_prices.csv', index=False) 
 
     return df 
     
@@ -237,12 +176,10 @@ def get_prices_binance() :
             curr_time = time.strftime("%d-%m-%y %H:%M:%S", time.localtime())
             df.loc[len(df)] = [ticker['symbol'].replace('USDT', ''), float(ticker['price']), curr_time]
 
-    with open ('files/delisted_binance.json', 'r') as file : 
-        output = json.load(file) 
-        df = df[~df['base_ticker'].isin(output['ticker'])]
+    delisted_binance = ['BTG']
 
-    # for troubleshoot purposes 
-    df.to_csv('files/binance_prices.csv', index=False) 
+    for ticker in delisted_binance : 
+        df = df[~df['base_ticker'].str.contains(ticker)]
     
     return df 
 
@@ -295,9 +232,6 @@ def check_price_diff (df_upbit, df_binance) :
     
     if trigger == 0 : 
         tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim))
-
-    # for troubleshooting purposes 
-    # df_combined.to_csv('files/df_combined.csv')
 
 
 @timing_decorator
