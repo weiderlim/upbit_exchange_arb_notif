@@ -55,7 +55,7 @@ def tg_notif (message) :
         'text' : message
         }
 
-    call_api(url, parameters)
+    call_api(url, **parameters)
 
 
 def get_exchange_rate () : 
@@ -77,9 +77,9 @@ def get_exchange_rate () :
     return curr_row['exchange_rate']
 
 
-def call_api_upbit (ticker) : 
+def call_orderbook_upbit (ticker) : 
     '''
-    Accepts ticker, returns current price  
+    Accepts ticker, returns current price and liquidity  
     '''
 
     url = "https://api.upbit.com/v1/orderbook"
@@ -117,7 +117,10 @@ def call_api_upbit (ticker) :
             tg_notif('SOME OTHER ERROR')
 
 
-def get_tickers_upbit () : 
+def get_prices_upbit() :     
+
+    columns = ['ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt', 'curr_time']
+    df = pd.DataFrame(columns=columns)
 
     url = 'https://api.upbit.com/v1/market/all'
     parameters = {'isDetails': 'false'}
@@ -131,32 +134,54 @@ def get_tickers_upbit () :
         if "KRW" in i['market'] : 
             ticker_list.append (i['market']) 
 
-    return ticker_list
-
-
-def get_prices_upbit() :     
-
-    columns = ['ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt', 'curr_time']
-    df = pd.DataFrame(columns=columns)
-
-    def task (ticker) :
-        bid_price, ask_price, lqtt = call_api_upbit(ticker)
+    for ticker in ticker_list : 
+        bid_price, ask_price, lqtt = call_orderbook_upbit(ticker)
         curr_time = time.strftime("%d-%m-%y %H:%M:%S", time.localtime())
         df.loc[len(df)] = [ticker, bid_price, ask_price, lqtt, curr_time]
 
         print(ticker, bid_price, lqtt)
 
-    for ticker in get_tickers_upbit() : 
-        task(ticker)
-
     curr_ex_rate = get_exchange_rate()
 
-    df['price_usd_upbit'] = df['bid_price_krw'] / curr_ex_rate
-    df['ask_price_usd_upbit'] = df['ask_price_krw'] / curr_ex_rate
+    df['price_usd'] = df['bid_price_krw'] / curr_ex_rate
+    df['ask_price_usd'] = df['ask_price_krw'] / curr_ex_rate
     df['lqtt_usd'] = df['lqtt'] / curr_ex_rate
 
     # returns only the base pair for KRW pairs 
     df['base_ticker'] = df['ticker'].apply(lambda x : x.replace('KRW-', ''))
+
+    return df 
+    
+
+def get_prices_bithumb() : 
+
+    # orderbook here contains all the tickers, don't have to call prices separately.
+    url = "https://api.bithumb.com/public/orderbook/ALL_KRW"
+
+    json_object = call_api(url)
+
+    data = json_object['data'] 
+
+    columns = ['ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt', 'curr_time']
+    df = pd.DataFrame(columns=columns)
+
+    for key, value in data.items() : 
+        lqtt_krw = 0 
+
+        if key not in ['timestamp', 'payment_currency'] : 
+            for bid in value['bids'] : 
+                lqtt_krw += bid['price'] * bid['quantity']
+        
+        curr_time = time.strftime("%d-%m-%y %H:%M:%S", time.localtime())
+        df.loc[len(df)] = [key, value['bids'][0]['price'], value['asks'][0]['price'], lqtt_krw, curr_time]
+
+    curr_ex_rate = get_exchange_rate()
+
+    df['price_usd'] = df['bid_price_krw'] / curr_ex_rate
+    df['ask_price_usd'] = df['ask_price_krw'] / curr_ex_rate
+    df['lqtt_usd'] = df['lqtt'] / curr_ex_rate
+
+    df.rename(columns={'ticker' : 'base_ticker'})
 
     return df 
     
@@ -199,62 +224,69 @@ def get_prices_mexc () :
     return None 
 
 
-def check_price_diff (df_upbit, df_binance) : 
+def check_price_diff (df_base, df_against, base_name, against_name, notif_trig) : 
     '''
     Accepts list of tickers for two exchanges, maps the tickers, and sends notification when triggered. 
     '''
 
-    df_combined = pd.merge(df_upbit, df_binance, on='base_ticker', how='left')
+    df_base.rename(columns={'price_usd' : 'price_usd_base', 'ask_price_usd' : 'ask_price_usd_base'})
 
-    # if positive then upbit is higher, if negative then upbit is lower. 
-    df_combined['usd_diff'] = df_combined['price_usd_upbit'] - df_combined['price_usd_binance']
-    df_combined['pct_diff'] = abs(df_combined['usd_diff'] / df_combined['price_usd_binance']) 
+    df_against.rename(columns={'price_usd' : 'price_usd_against', 'ask_price_usd' : 'ask_price_usd_against'})
+
+    df_combined = pd.merge(df_base, df_against, on='base_ticker', how='left')
+
+    # if positive then base is higher, if negative then base is lower. 
+    df_combined['usd_diff'] = df_combined['price_usd_base'] - df_combined['price_usd_against']
+    df_combined['pct_diff'] = abs(df_combined['usd_diff'] / df_combined['price_usd_against']) 
 
     # Formula explanation : We are buying token from other exchanges, selling on upbit for KRW, sell KRW for ETH, and send back. So we need ask price of ETH on upbit instead bid price. 
 
-    df_combined['ask_usd_diff'] = df_combined['ask_price_usd_upbit'] - df_combined['price_usd_binance']
-    df_combined['ask_pct_diff'] = abs(df_combined['ask_usd_diff'] / df_combined['price_usd_binance']) 
+    df_combined['ask_usd_diff'] = df_combined['ask_price_usd_base'] - df_combined['ask_price_usd_against']
+    df_combined['ask_pct_diff'] = abs(df_combined['ask_usd_diff'] / df_combined['price_usd_against']) 
 
     # get ask price pct difference of ETH on Upbit
     for index, row in df_combined.iterrows() : 
-        # upbit_eth_ask_price_pct = df_combined[df_combined['base_ticker'].str.contains('ETH')]['ask_pct_diff'].loc[0]
         if df_combined.loc[index, 'base_ticker'] == 'ETH' : 
-            upbit_eth_ask_price_pct = df_combined.loc[index, 'ask_pct_diff']
+            base_eth_ask_price_pct = df_combined.loc[index, 'ask_pct_diff']
             break 
-
-    # setting notification trigger so we know the script is actually running. 
-    trigger = 0
 
     profit_pct_lim = 5
 
     for index, row in df_combined.iterrows() : 
-        # case when upbit price > binance
+        # case when base price > against
         if df_combined.loc[index, 'usd_diff'] > 0 : 
             token_upbit_delta_pct = df_combined.loc[index, 'pct_diff'] 
 
-            profit_pct =  100 * (token_upbit_delta_pct + 1) * (1 - upbit_eth_ask_price_pct) - 100
+            profit_pct =  100 * (token_upbit_delta_pct + 1) * (1 - base_eth_ask_price_pct) - 100
 
-            print(df_combined.loc[index, 'base_ticker'], abs(df_combined.loc[index, 'pct_diff']) * 100, profit_pct, upbit_eth_ask_price_pct)
+            print(df_combined.loc[index, 'base_ticker'], abs(df_combined.loc[index, 'pct_diff']) * 100, profit_pct, base_eth_ask_price_pct)
             
             # If profit_pct > x, then we want notification. 
             if profit_pct > profit_pct_lim : 
-                trigger = 1
-                message1 = '{} - Upbit is higher than Binance by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], abs(df_combined.loc[index, 'pct_diff']) * 100)
+                notif_trig = 1
+                message1 = '{} - {} is higher than {} by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], base_name, against_name, abs(df_combined.loc[index, 'pct_diff']) * 100)
                 message2 = 'Absolute Diff - $ {:.6f}'.format(abs(df_combined.loc[index, 'usd_diff']))
                 message3 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
-                message4 = 'Upbit USD Liquidity Close to stated price - $ {:.2f}'.format(df_combined.loc[index, 'lqtt_usd'])
+                message4 = '{} Rough USD Liquidity - $ {:.2f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
                 tg_notif(message1 + '\n\n' + message2 + '\n\n' + message3 + '\n\n' + message4 + '\n\n')
     
-    if trigger == 0 : 
-        tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim))
-
+    return notif_trig
+    
 
 @timing_decorator
 def execute() : 
     df_upbit = get_prices_upbit() 
+    df_bithumb = get_prices_bithumb()
     df_binance = get_prices_binance() 
 
-    check_price_diff(df_upbit, df_binance)
+    # allows script to return default notification if condition is not triggered
+    notif_trig = 0 
+
+    notif_trig = check_price_diff(df_upbit, df_binance, 'Upbit', 'Binance', notif_trig)
+    notif_trig = check_price_diff(df_bithumb, df_binance, 'Bithumb', 'Binance', notif_trig)
+
+    if notif_trig == 0 : 
+        tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim))
 
 
 def lambda_handler(event, context):
@@ -266,8 +298,8 @@ def lambda_handler(event, context):
     }
 
 
-
-
+if __name__ == '__main__' : 
+    print(get_tickers_bithumb()) 
 
 
 
