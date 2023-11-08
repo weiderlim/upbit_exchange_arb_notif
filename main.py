@@ -33,6 +33,32 @@ def tg_notif (message) :
     response = requests.get(url, params=parameters)
 
 
+def call_api (url, **kwargs) : 
+    '''
+    A general use api call function that is able to take in any number of parameters in json format (including no parameters)
+
+    kwargs is in format of a dictionary with key value pairs or the URL parameters. 
+    '''
+
+    headers = {
+        "accept": "application/json"
+    }
+
+    # if kwargs is not inputted, then kwargs = {}. {} is an acceptable input for params=
+    response = requests.get(url, headers=headers, params=kwargs)
+    
+    # Handle the response and return data as needed.
+    if response.status_code == 200:
+        return response.json()
+    else:
+        return {"error": "API request failed"}
+    
+    # convert (usually response is in non JSON form) to json object first 
+    json_object = json.loads(response.text) 
+
+    return json_object  
+
+
 def get_exchange_rate () : 
     '''
     Only want to call the exchange rate API if it has been an hour since the last call. This function creates a file with record of previous hour and exchange rate, and checks if it has ald been a hour. 
@@ -88,10 +114,8 @@ def call_api_exchange_rate () :
         'access_key' : os.getenv('exchange_rate_key'),
         'symbols' : 'USD, KRW'
         }
-    
-    response = requests.get(url, params=parameters) 
 
-    json_object = json.loads(response.text) 
+    json_object = call_api(url, **parameters) 
 
     return json_object['rates']['KRW'] / json_object['rates']['USD']
 
@@ -101,21 +125,14 @@ def call_api_upbit (ticker) :
     Accepts ticker, returns current price  
     '''
 
-    # Reads url and converts it into a readable JSON format
     url = "https://api.upbit.com/v1/orderbook"
-
-    headers = {
-        "accept": "application/json"
-    }
 
     parameters = {
         'markets' : ticker
     }
 
-    response = requests.get(url, headers=headers, params=parameters)
-
     # convert (usually response is in non JSON form) to json object first 
-    json_object = json.loads(response.text) 
+    json_object = call_api(url, **parameters)
 
     orderbook = json_object[0]['orderbook_units']
 
@@ -144,13 +161,10 @@ def call_api_upbit (ticker) :
 def get_tickers_upbit () : 
 
     url = 'https://api.upbit.com/v1/market/all'
-    headers = {'accept': 'application/json'}
-    params = {'isDetails': 'false'}
+    
+    parameters = {'isDetails': 'false'}
 
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()  # Check if the request was successful
-
-    json_object = json.loads(response.text) 
+    json_object = call_api(url, **parameters)
 
     ticker_list = []
 
@@ -216,17 +230,9 @@ def get_prices_binance() :
     Returns price of all binance USDT pairs in a list. 
     '''
 
-    # Reads url and converts it into a readable JSON format
     url = "https://api.binance.com/api/v3/ticker/price"
 
-    headers = {
-        "accept": "application/json"
-    }
-
-    response = requests.get(url, headers=headers)
-
-    # convert (usually response is in non JSON form) to json object first 
-    json_object = json.loads(response.text) 
+    json_object = call_api(url)
 
     columns = ['base_ticker', 'price_usd_binance', 'curr_time']
     df = pd.DataFrame(columns=columns)
