@@ -3,6 +3,7 @@
 READ.ME
 binance_prices.csv
 upbit_prices.csv
+bithumb_prices.csv 
 exchange_rate_hour.json
 visualisation.py
 test.py
