@@ -3,8 +3,10 @@
 Historically, there has been times where tokens on Upbit trade for significantly higher than the rest of the market, partially due to difficulty in opening an account if individuals are not from Korea. 
 
 Example of this happening is when MINA first launched, price comparison between Binance and Upbit : 
-MINA Historical Price on Upbit [here](https://www.binance.com/en/price/mina)
-MINA Historical Price on Binance [here](https://upbit.com/exchange?code=CRIX.UPBIT.KRW-MINA)
+
+[MINA Historical Price on Upbit](https://www.binance.com/en/price/mina)
+
+[MINA Historical Price on Binance](https://upbit.com/exchange?code=CRIX.UPBIT.KRW-MINA)
 
 
 ## Output : 
@@ -17,7 +19,7 @@ ETH is chosen because it has high liquidity, and does not take as long as BTC fo
 
 ## To use : 
 
-**API keys for Telegram** - Instructions for setting up the bot [here](https://core.telegram.org/bots/api) and exchange rate [here](https://exchangeratesapi.io/) are needed.
+**API keys for Telegram** - [Instructions](https://core.telegram.org/bots/api) for setting up the bot and [getting API key for exchange rate](https://exchangeratesapi.io/) are needed.
 
 An **Upbit / Bithumb exchange account** is needed to execute the trades. 
 
