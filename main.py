@@ -47,7 +47,7 @@ def call_api (url, **kwargs) :
 
 def tg_notif (message, destination) : 
     
-    url = "https://api.telegram.org/bot{}/sendMessage".format(os.environ.get('telegram_key'))
+    url = "https://api.telegram.org/bot{}/sendMessage".format(os.environ.get('TELEGRAM_KEY'))
 
     if destination == 'real_time' : 
         chat_id = '-911570737'

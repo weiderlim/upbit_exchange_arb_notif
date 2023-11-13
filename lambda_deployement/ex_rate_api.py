@@ -11,7 +11,7 @@ def call_api_exchange_rate () :
     url = "https://api.exchangeratesapi.io/v1/latest"
 
     parameters = {
-        'access_key' : os.environ.get('exchange_rate_key'),
+        'access_key' : os.environ.get('EXCHANGE_RATE_KEY'),
         'symbols' : 'USD, KRW'
         }
     

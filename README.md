@@ -22,16 +22,24 @@ ETH is chosen because it has high liquidity, and does not take as long as BTC fo
 
 ### To use : 
 
-You will need to set up : 
+Before using this script, the following needs to be set up, followed by associated ENVIRONMENT_VARIABLES : 
 
-1. **API keys for Telegram** - [Instructions](https://core.telegram.org/bots/api) for setting up the bot and [getting API key for exchange rate](https://exchangeratesapi.io/) are needed.
+1. **API keys for Telegram** - TELEGRAM_KEY
+[Instructions](https://core.telegram.org/bots/api) for setting up the bot.
 
-2. **An Upbit / Bithumb exchange account** is needed to execute the trades. 
+2. **Exchange rate for KRW USD conversion** - EXCHANGE_RATE_KEY
+[Getting API key](https://exchangeratesapi.io/).
 
-Under the *execute* function in the script, adjust the parameters for the bot to ping to suit your personal preference. 
+3. **An Upbit / Bithumb exchange account** 
+Needed to execute the trades. 
+
+4. **DB to store the conversion values** - COLLECTION_NAME, MONGO_CONN_STR, DB_NAME
+DB used here is MongoDB, updated by a script on Lambda (ex_rate_api.py) file that runs every hour. 
+
+5. Under the *execute* function in the script, adjust the parameters for the bot to ping to suit your personal preference. 
 
 
-### Lambda Deployment script : 
+### Lambda Deployment : 
 
 Due to the API call monthly limit for the exchange rate, we only want to update the Korean Won prices every hour. A separate cron job is used for the main script (every minute) and the exchange rate API call (every hour). 
 
