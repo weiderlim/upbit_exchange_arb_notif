@@ -8,33 +8,36 @@ Example of this happening is when MINA first launched, price comparison between 
 
 [MINA Historical Price on Binance](https://upbit.com/exchange?code=CRIX.UPBIT.KRW-MINA)
 
+*The current version of the script does not include automated trading. This is because the script uses tickers to match tokens between exchanges. In testing, it was found that different exchanges might use the same ticker for different tokens. For now, the bot serves as a notification tool which allows for further checking to cross-check tokens between exchanges by comparing contract addresses and executing the trades manually.*
 
 ### Bot Ping Output : 
 
-1. **Absolute Profit** - Profit % multipled by Available Liquidity on the Korean exchange
-1. **Real-time profit percentages** - See explanation below
-1. **Available Liquidity at 2% depth**  
+1. *Absolute Profit* - Profit % multipled by Available Liquidity on the Korean exchange
+2. *Real-time profit percentages* - See explanation below
+3. *Available Liquidity at 2% depth*
 
-The idea behind the calculation of **real-life profit percentages** is mimicking the profit that would be gained if an individual sent a particular token on the Korean Exchanges, converted that token to ETH and sent that ETH from the Korean Exchanges. Since ETH prices are also higher on the Korean Exchanges, profits out are discounted. 
+The idea behind the calculation of **Real-life profit percentages** is mimicking the profit that would be gained if an individual sent a particular token on the Korean Exchanges, converted that token to ETH and sent that ETH from the Korean Exchanges. Since ETH prices are also higher on the Korean Exchanges, profits out are discounted. 
 
 ETH is chosen because it has high liquidity, and does not take as long as BTC for transactions to execute. 
 
 ### To use : 
 
-2. **API keys for Telegram** - [Instructions](https://core.telegram.org/bots/api) for setting up the bot and [getting API key for exchange rate](https://exchangeratesapi.io/) are needed.
+You will need to set up : 
+
+1. **API keys for Telegram** - [Instructions](https://core.telegram.org/bots/api) for setting up the bot and [getting API key for exchange rate](https://exchangeratesapi.io/) are needed.
 
 2. **An Upbit / Bithumb exchange account** is needed to execute the trades. 
 
-2. Adjust the parameters for the bot to ping in the code to suit your personal preference. 
+Under the *execute* function in the script, adjust the parameters for the bot to ping to suit your personal preference. 
 
 
-### Lambda Deployment code : 
+### Lambda Deployment script : 
 
 Due to the API call monthly limit for the exchange rate, we only want to update the Korean Won prices every hour. A separate cron job is used for the main script (every minute) and the exchange rate API call (every hour). 
 
-Pymongo is used to call the exchange rate from a MongoDB collection (table), which is update every hour with the exchange rate API call above. 
+Pymongo is used to call the exchange rate from a MongoDB collection (table), which is updated every hour with the exchange rate API call above. 
 
-The code is ran on AWS Lambda, hence the lambda_handler function which enables Lambda to execute the script. 
+The script is ran on AWS Lambda, hence the lambda_handler function which enables Lambda to execute the script. 
 
 
 

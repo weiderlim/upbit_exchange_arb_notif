@@ -302,7 +302,7 @@ def get_prices_mexc () :
     return df 
 
 
-def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, abs_profit_trig, lqtt_trig, destination) : 
+def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, profit_pct_trig, abs_profit_trig, lqtt_trig, destination) : 
     '''
     Accepts list of tickers for two exchanges, maps the tickers, and sends notification when triggered. 
     '''
@@ -340,7 +340,7 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
             # print(df_combined.loc[index, 'base_ticker'], df_combined.loc[index, 'pct_diff'], base_eth_ask_price_pct, profit_pct)
             
             # conditions for notification trigger
-            if abs_profit > abs_profit_trig and df_combined.loc[index, 'lqtt_usd'] > lqtt_trig: 
+            if profit_pct > profit_pct_trig and abs_profit > abs_profit_trig and df_combined.loc[index, 'lqtt_usd'] > lqtt_trig: 
                 notif_trig = 1
                 message1 = '{} - {} is higher than {} by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], base_name, against_name, abs(df_combined.loc[index, 'pct_diff']) * 100)
                 message2 = 'Absolute Profit - $ {:,.0f}'.format(abs_profit)
@@ -357,8 +357,9 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
 def execute(destination) : 
 
     # configurations 
-    abs_profit_trig = 5000
+    abs_profit_trig = 10000
     lqtt_trig = 10000
+    profit_pct_trig = 5
 
     # allows script to return default notification if conditions are not triggered
     notif_trig = 0 
@@ -406,7 +407,7 @@ def execute(destination) :
     
     for base in base_exchanges : 
         for compared in compared_exchanges : 
-            notif_trig = check_price_diff(base['exchange_df'], compared['exchange_df'], base['exchange_name'], compared['exchange_name'] , notif_trig, abs_profit_trig, lqtt_trig, destination)
+            notif_trig = check_price_diff(base['exchange_df'], compared['exchange_df'], base['exchange_name'], compared['exchange_name'], notif_trig, profit_pct_trig, abs_profit_trig, lqtt_trig, destination)
     
     if notif_trig == 0 : 
         tg_notif("No tickers with absolute profit > $ {:,.0f}".format(abs_profit_trig), destination)
