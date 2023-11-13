@@ -14,10 +14,15 @@ ETH is chosen because it has high liquidity, and does not take as long as BTC fo
 
 To use : 
 
-API keys for Telegram and exchange rate (https://exchangeratesapi.io/ is used here) is needed (saved in .env file in parent folder). 
+API keys for Telegram and exchange rate (https://exchangeratesapi.io/ is used here) is needed (saved in .env file in parent folder / materialized in environemnt externally). 
 
 
 
 Lambda Deployment : 
 
-Due to the API call monthly limit for the exchange rate, we only want to update the Korean Won prices every hour. A separate cron job is used for the main script (every minute) and the exchange rate monhtly API call. 
+Due to the API call monthly limit for the exchange rate, we only want to update the Korean Won prices every hour. A separate cron job is used for the main script (every minute) and the exchange rate API call (every hour). 
+
+Pymongo is used to call the exchange rate from a MongoDB collection (table), which is update every hour with the exchange rate API call above. 
+
+The code is ran on AWS Lambda, hence the lambda_handler function which enables Lambda to execute the script. 
+

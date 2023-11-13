@@ -5,7 +5,6 @@ import pandas as pd
 import os 
 from pymongo import MongoClient
 
-
 def timing_decorator(func):
     '''
     Script is ran every minute, so it is important to know how long the code takes to run 
@@ -104,14 +103,13 @@ def call_orderbook_upbit (ticker) :
         # get bid price, ask price, and liquidty 
         bid_price = orderbook[0]['bid_price']
         ask_price = orderbook[0]['ask_price']
+        curr_price = (bid_price + ask_price) / 2
         lqtt = 0 
 
-        # just report lqtt for first 5 
-        for order in orderbook[0:5] : 
-            lqtt += order['bid_price'] * order['bid_size']
-
-        # emptying for RAM preservation
-        orderbook = []
+        # 2% depth liquidity 
+        for order in orderbook : 
+            if order['bid_price'] > curr_price * 0.98 : 
+                lqtt += order['bid_price'] * order['bid_size']
 
         return bid_price, ask_price, lqtt
         
@@ -131,7 +129,7 @@ def get_prices_upbit() :
     datatype of 'price_usd', 'ask_price_usd' and 'lqtt' - float 
     '''
 
-    columns = ['ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt']
+    columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt']
     df = pd.DataFrame(columns=columns)
 
     url = 'https://api.upbit.com/v1/market/all'
@@ -141,14 +139,20 @@ def get_prices_upbit() :
 
     ticker_list = []
 
+    # list of tokens that are diff between upbit and the rest of the market. 
+    diff_ticker_list = ['TON']
+
     for i in json_object : 
         # take only prices for the ones which compares to KRW 
         if "KRW" in i['market'] : 
             ticker_list.append (i['market']) 
 
     for ticker in ticker_list : 
-        bid_price, ask_price, lqtt = call_orderbook_upbit(ticker)
-        df.loc[len(df)] = [ticker, bid_price, ask_price, lqtt]
+        if ticker not in diff_ticker_list : 
+            bid_price, ask_price, lqtt = call_orderbook_upbit(ticker)
+            df.loc[len(df)] = [ticker, bid_price, ask_price, lqtt]
+
+    df['base_ticker'] = df['base_ticker'].apply(lambda x : x.replace('KRW-', '')) 
 
     curr_ex_rate = get_exchange_rate()
 
@@ -156,33 +160,51 @@ def get_prices_upbit() :
     df['ask_price_usd'] = df['ask_price_krw'] / curr_ex_rate
     df['lqtt_usd'] = df['lqtt'] / curr_ex_rate
 
-    # returns only the base pair for KRW pairs 
-    df['base_ticker'] = df['ticker'].apply(lambda x : x.replace('KRW-', ''))
+    for ticker in diff_ticker_list : 
+        df = df.drop(df[df['base_ticker'] == ticker].index)
 
     return df 
     
 
-def get_prices_bithumb() : 
+def call_orderbook_bithumb (ticker, curr_price) : 
 
     # orderbook here contains all the tickers, don't have to call prices separately.
-    url = "https://api.bithumb.com/public/orderbook/ALL_KRW"
+    url = "https://api.bithumb.com/public/orderbook/" + ticker + "_KRW"
 
     json_object = call_api(url)
 
     data = json_object['data'] 
 
+    bid_price = float(data['bids'][0]['price']) 
+    ask_price = float(data['asks'][0]['price']) 
+
+    lqtt = 0 
+
+    for bid in data['bids'] : 
+        # 2% depth liquidity 
+        if float(bid['price']) > curr_price * 0.98 :
+            lqtt += float(bid['price']) * float(bid['quantity']) 
+
+    return bid_price, ask_price, lqtt
+            
+
+def get_prices_bithumb() : 
+
+    # get all tickers and their prices
+    url = "https://api.bithumb.com/public/ticker/ALL_KRW"
+
+    json_object = call_api(url) 
+
+    data = json_object['data']
+
     columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt']
     df = pd.DataFrame(columns=columns)
 
-    for key, value in data.items() : 
-
-        lqtt_krw = 0 
-
-        if key not in ['timestamp', 'payment_currency'] : 
-            for bid in value['bids'] : 
-                lqtt_krw += float(bid['price']) * float(bid['quantity']) 
-        
-            df.loc[len(df)] = [key, float(value['bids'][0]['price']), float(value['asks'][0]['price']), lqtt_krw]
+    for ticker, info in data.items() : 
+        if ticker != 'date' : 
+            curr_price = float(info['closing_price'])
+            bid_price, ask_price, lqtt = call_orderbook_bithumb(ticker, curr_price)
+            df.loc[len(df)] = [ticker, bid_price, ask_price, lqtt]
 
     curr_ex_rate = get_exchange_rate()
 
@@ -248,9 +270,13 @@ def get_prices_bitget () :
     columns = ['base_ticker', 'price_usd']
     df = pd.DataFrame(columns=columns)
 
+    # returns only the base pair for USDT pairs 
     for ticker in data : 
-        if 'USDT' in  ticker['symbol'] : 
-            df.loc[len(df)] = [ticker['symbol'].replace('USDT', ''), float(ticker['buyOne'])]
+        # some tickers does not have a price 
+        if ticker['buyOne'] != '0':
+            if 'USDT' in  ticker['symbol'] : 
+                base_ticker = ticker['symbol'].replace('USDT', '')                
+                df.loc[len(df)] = [base_ticker, float(ticker['buyOne'])]
 
     return df 
 
@@ -258,10 +284,7 @@ def get_prices_bitget () :
 def get_prices_mexc () : 
     url = 'https://api.mexc.com/api/v3/ticker/price'
 
-    json_object = call_api(url) 
-
-    print (type(json_object)) 
-    print (type(json_object[0])) 
+    json_object = call_api(url)
 
     columns = ['base_ticker', 'price_usd']
     df = pd.DataFrame(columns=columns)
@@ -313,26 +336,22 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
 
             print(df_combined.loc[index, 'base_ticker'], df_combined.loc[index, 'pct_diff'], base_eth_ask_price_pct, profit_pct)
             
-            # If profit_pct > x, then we want notification. 
-            if profit_pct > profit_pct_lim : 
+            # conditions for notification trigger
+            if profit_pct > profit_pct_lim and df_combined.loc[index, 'lqtt_usd'] > 10000: 
                 notif_trig = 1
                 message1 = '{} - {} is higher than {} by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], base_name, against_name, abs(df_combined.loc[index, 'pct_diff']) * 100)
-                message2 = 'Absolute Diff - $ {:.6f}'.format(abs(df_combined.loc[index, 'usd_diff']))
-                message3 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
-                message4 = '{} Rough USD Liquidity - $ {:.2f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
-                tg_notif(str(message1 + '\n\n' + message2 + '\n\n' + message3 + '\n\n' + message4 + '\n\n'), destination) 
+                message2 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
+                message3 = '{} Rough USD Liquidity - $ {:.2f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
+                tg_notif(str(message1 + '\n\n' + message2 + '\n\n' + message3), destination) 
     
     return notif_trig
     
 
 @timing_decorator
-def execute() : 
+def execute(destination) : 
 
     # configurations 
     profit_pct_lim = 5
-
-    # tg notification destination for testing purposes 
-    destination = 'testing'
 
     # base exchanges
     df_upbit = get_prices_upbit() 
@@ -347,10 +366,6 @@ def execute() :
     # allows script to return default notification if condition is not triggered
     notif_trig = 0 
 
-    # for troubleshooting purporses
-    # print(df_bithumb)
-    # print(df_upbit)
-
     # upbit comparisons
     notif_trig = check_price_diff(df_upbit, df_binance, 'Upbit', 'Binance', notif_trig, profit_pct_lim, destination)
     notif_trig = check_price_diff(df_upbit, df_bybit, 'Upbit', 'Bybit', notif_trig, profit_pct_lim, destination)
@@ -364,12 +379,19 @@ def execute() :
     notif_trig = check_price_diff(df_bithumb, df_mexc, 'Bithumb', 'MEXC', notif_trig, profit_pct_lim, destination)
 
     if notif_trig == 0 : 
-        tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim))
+        tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim), destination)
 
+
+####################################### paste changes from the other main.py above #######################################
 
 def lambda_handler(event, context):
     # TODO implement
-    execute()
+
+    # tg notification destination for testing purposes 
+    destination = 'real_time'
+
+    execute(destination)
+
     return {
         'statusCode': 200,
         'body': json.dumps('Hello from Lambda!')
