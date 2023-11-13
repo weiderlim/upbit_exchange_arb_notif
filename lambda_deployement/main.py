@@ -302,7 +302,7 @@ def get_prices_mexc () :
     return df 
 
 
-def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, profit_pct_lim, destination) : 
+def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, abs_profit_trig, lqtt_trig, destination) : 
     '''
     Accepts list of tickers for two exchanges, maps the tickers, and sends notification when triggered. 
     '''
@@ -334,15 +334,21 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
 
             profit_pct =  100 * (df_combined.loc[index, 'pct_diff']  + 1) * (1 - base_eth_ask_price_pct) - 100
 
-            print(df_combined.loc[index, 'base_ticker'], df_combined.loc[index, 'pct_diff'], base_eth_ask_price_pct, profit_pct)
+            abs_profit = profit_pct / 100 * df_combined.loc[index, 'lqtt_usd']
+
+            # for troubleshooting purposes 
+            # print(df_combined.loc[index, 'base_ticker'], df_combined.loc[index, 'pct_diff'], base_eth_ask_price_pct, profit_pct)
             
             # conditions for notification trigger
-            if profit_pct > profit_pct_lim and df_combined.loc[index, 'lqtt_usd'] > 10000: 
+            if abs_profit > abs_profit_trig and df_combined.loc[index, 'lqtt_usd'] > lqtt_trig: 
                 notif_trig = 1
                 message1 = '{} - {} is higher than {} by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], base_name, against_name, abs(df_combined.loc[index, 'pct_diff']) * 100)
-                message2 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
-                message3 = '{} 2% Depth Liquidity - $ {:.2f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
-                tg_notif(str(message1 + '\n\n' + message2 + '\n\n' + message3), destination) 
+                message2 = 'Absolute Profit - $ {:,.0f}'.format(abs_profit)
+
+                message3 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
+                message4 = '{} 2% Depth Liquidity - $ {:,.0f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
+        
+                tg_notif(str(message1 + '\n\n' + message2 + '\n\n' + message3 + '\n' + message4), destination) 
     
     return notif_trig
     
@@ -351,9 +357,12 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
 def execute(destination) : 
 
     # configurations 
-    profit_pct_lim = 5
+    abs_profit_trig = 5000
+    lqtt_trig = 10000
 
-    # base exchanges
+    # allows script to return default notification if conditions are not triggered
+    notif_trig = 0 
+
     df_upbit = get_prices_upbit() 
     df_bithumb = get_prices_bithumb()
 
@@ -363,23 +372,44 @@ def execute(destination) :
     df_bitget = get_prices_bitget()
     df_mexc = get_prices_mexc()
 
-    # allows script to return default notification if condition is not triggered
-    notif_trig = 0 
+    # korean exchanges where the prices are more different compared to the rest of the market
+    base_exchanges = [
+        {
+            'exchange_name' : 'Upbit',
+            'exchange_df' : df_upbit
+        },
+        {
+            'exchange_name' : 'Bithumb',
+            'exchange_df' : df_bithumb
+        }
+    ]
 
-    # upbit comparisons
-    notif_trig = check_price_diff(df_upbit, df_binance, 'Upbit', 'Binance', notif_trig, profit_pct_lim, destination)
-    notif_trig = check_price_diff(df_upbit, df_bybit, 'Upbit', 'Bybit', notif_trig, profit_pct_lim, destination)
-    notif_trig = check_price_diff(df_upbit, df_bitget, 'Upbit', 'Bitget', notif_trig, profit_pct_lim, destination)
-    notif_trig = check_price_diff(df_upbit, df_mexc, 'Upbit', 'MEXC', notif_trig, profit_pct_lim, destination)
+    # widely used exchanges which are used as comparisons to the Korean ones. 
+    compared_exchanges = [
+        {
+            'exchange_name' : 'Binance',
+            'exchange_df' : df_binance
+        },
+        {
+            'exchange_name' : 'Bybit',
+            'exchange_df' : df_bybit
+        },
+        {
+            'exchange_name' : 'Bitget',
+            'exchange_df' : df_bitget
+        },
+        {
+            'exchange_name' : 'MEXC',
+            'exchange_df' : df_mexc
+        }
+    ]
     
-    # bithumb comparisons
-    notif_trig = check_price_diff(df_bithumb, df_binance, 'Bithumb', 'Binance', notif_trig, profit_pct_lim, destination)
-    notif_trig = check_price_diff(df_bithumb, df_bybit, 'Bithumb', 'Bybit', notif_trig, profit_pct_lim, destination)
-    notif_trig = check_price_diff(df_bithumb, df_bitget, 'Bithumb', 'Bitget', notif_trig, profit_pct_lim, destination)
-    notif_trig = check_price_diff(df_bithumb, df_mexc, 'Bithumb', 'MEXC', notif_trig, profit_pct_lim, destination)
-
+    for base in base_exchanges : 
+        for compared in compared_exchanges : 
+            notif_trig = check_price_diff(base['exchange_df'], compared['exchange_df'], base['exchange_name'], compared['exchange_name'] , notif_trig, abs_profit_trig, lqtt_trig, destination)
+    
     if notif_trig == 0 : 
-        tg_notif("No tickers within profit pct range of > {:.0f} %".format(profit_pct_lim), destination)
+        tg_notif("No tickers with absolute profit > $ {:,.0f}".format(abs_profit_trig), destination)
 
 
 ####################################### paste changes from the other main.py above #######################################
