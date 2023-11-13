@@ -340,9 +340,12 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
             if profit_pct > profit_pct_lim and df_combined.loc[index, 'lqtt_usd'] > 10000: 
                 notif_trig = 1
                 message1 = '{} - {} is higher than {} by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], base_name, against_name, abs(df_combined.loc[index, 'pct_diff']) * 100)
-                message2 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
-                message3 = '{} Rough USD Liquidity - $ {:.2f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
-                tg_notif(str(message1 + '\n\n' + message2 + '\n\n' + message3), destination) 
+                message2 = 'Absolute Profit - $ {:,.0f}'.format(profit_pct / 100 * df_combined.loc[index, 'lqtt_usd'])
+
+                message3 = 'Profit Pct Estimate - {:.2f} %'.format(profit_pct)
+                message4 = '{} 2% Depth Liquidity - $ {:,.0f}'.format(base_name, df_combined.loc[index, 'lqtt_usd'])
+        
+                tg_notif(str(message1 + '\n\n' + message2 + '\n\n' + message3 + '\n' + message4), destination) 
     
     return notif_trig
     
