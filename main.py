@@ -129,7 +129,7 @@ def get_prices_upbit() :
     datatype of 'price_usd', 'ask_price_usd' and 'lqtt' - float 
     '''
 
-    columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt']
+    columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'base_lqtt']
     df = pd.DataFrame(columns=columns)
 
     url = 'https://api.upbit.com/v1/market/all'
@@ -158,7 +158,7 @@ def get_prices_upbit() :
 
     df['price_usd'] = df['bid_price_krw'] / curr_ex_rate
     df['ask_price_usd'] = df['ask_price_krw'] / curr_ex_rate
-    df['lqtt_usd'] = df['lqtt'] / curr_ex_rate
+    df['base_lqtt_usd'] = df['base_lqtt'] / curr_ex_rate
 
     for ticker in diff_ticker_list : 
         df = df.drop(df[df['base_ticker'] == ticker].index)
@@ -197,7 +197,7 @@ def get_prices_bithumb() :
 
     data = json_object['data']
 
-    columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'lqtt']
+    columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'base_lqtt']
     df = pd.DataFrame(columns=columns)
 
     for ticker, info in data.items() : 
@@ -210,10 +210,40 @@ def get_prices_bithumb() :
 
     df['price_usd'] = df['bid_price_krw'] / curr_ex_rate
     df['ask_price_usd'] = df['ask_price_krw'] / curr_ex_rate
-    df['lqtt_usd'] = df['lqtt'] / curr_ex_rate
+    df['base_lqtt_usd'] = df['base_lqtt'] / curr_ex_rate
 
     return df 
     
+
+def call_orderbook_binance(ticker) : 
+    # orderbook here contains all the tickers, don't have to call prices separately.
+    url = "https://api.binance.com/api/v3/depth"
+
+    parameters = {
+        'symbol' : ticker, 
+        'limit' : '5'
+    }
+    
+    json_object = call_api(url, **parameters)
+
+    data = json_object
+
+    # sometimes query just fails, or empty orderbook indicate they don't exist as spot anymore
+    if not 'bids' in data or not data['bids']: 
+        return 0
+
+    bid_price = float(data['bids'][0][0])
+    ask_price = float(data['asks'][0][0])
+    curr_price = (bid_price + ask_price) / 2
+    lqtt = 0 
+
+    # 2% depth liquidity 
+    for order in data['asks'] : 
+        if float(order[0]) < curr_price * 1.02 : 
+            lqtt += float(order[0]) * float(order[1])
+
+    return lqtt
+
 
 def get_prices_binance() : 
     ''' 
@@ -226,20 +256,63 @@ def get_prices_binance() :
 
     json_object = call_api(url)
 
-    columns = ['base_ticker', 'price_usd']
+    columns = ['base_ticker', 'price_usd', 'against_lqtt']
     df = pd.DataFrame(columns=columns)
 
-    # some of the tokens have been delisted but is still in the API showing wrong prices. 
+    # some of the tokens have been delisted but is still in the API showing wrong prices, 
     delisted_tickers = ['BTG']
+
+    # previous empty orderbooks 
+    # 'BCC', 'VEN', 'PAX', 'BCHABC', 'BCHSV', 'BTT', 'USDS', 'NANO', 'MITH', 'USDSB', 'GTO', 'ERD', 'NPXS', 'COCOS', 'MFT', 'STORM', 'BEAM', 'HC', 'MCO', 'BULL', 'BEAR', 'ETHBULL']
 
     # returns only the base pair for USDT pairs 
     for ticker in json_object : 
         if 'USDT' in  ticker['symbol'] : 
             base_ticker = ticker['symbol'].replace('USDT', '')
             if base_ticker not in delisted_tickers : 
-                df.loc[len(df)] = [base_ticker, float(ticker['price'])]
+                against_lqtt = call_orderbook_binance(ticker['symbol'])
+                df.loc[len(df)] = [base_ticker, float(ticker['price']), against_lqtt]
 
     return df 
+
+
+def call_orderbook_bybit(ticker) :     
+    # this url in their documentation gives false info, like DOGEUSDT. The one below is more complete, but does not encompass every single token that is traded too. 
+    # url = "https://api-testnet.bybit.com/v5/market/orderbook"
+
+    url = "https://api.bybit.com/v2/public/orderBook/L2"
+
+    parameters = {
+        'symbol' : ticker
+    }
+
+    json_object = call_api(url, **parameters)
+
+    data = json_object['result']
+
+    if not data : 
+        return 0 
+
+    for order in data : 
+        if order['side'] == 'Buy' : 
+            bid_price = float(order['price'])
+            break 
+
+    for order in data : 
+        if order['side'] == 'Sell' : 
+            ask_price = float(order['price'])
+            break 
+    
+    curr_price = (bid_price + ask_price) / 2
+    lqtt = 0 
+
+    # 2% depth liquidity 
+    for order in data : 
+        if order['side'] == 'Buy' : 
+            if float(order['price']) < curr_price * 1.02 : 
+                lqtt += float(order['price']) * float(order['size'])
+
+    return lqtt
 
 
 def get_prices_bybit () : 
@@ -249,15 +322,42 @@ def get_prices_bybit () :
 
     data = json_object['result']['list']
 
-    columns = ['base_ticker', 'price_usd']
+    columns = ['base_ticker', 'price_usd', 'against_lqtt']
     df = pd.DataFrame(columns=columns)
 
     # returns only the base pair for USDT pairs 
     for ticker in data : 
         if 'USDT' in  ticker['symbol'] : 
-            df.loc[len(df)] = [ticker['symbol'].replace('USDT', ''), float(ticker['lastPrice'])]
+            against_lqtt = call_orderbook_bybit(ticker['symbol'])
+            df.loc[len(df)] = [ticker['symbol'].replace('USDT', ''), float(ticker['lastPrice']), against_lqtt]
 
     return df 
+
+
+def call_orderbook_bitget (ticker) : 
+    # orderbook here contains all the tickers, don't have to call prices separately.
+    url = "https://api.bitget.com/api/v2/spot/market/orderbook"
+
+    parameters = {
+        'symbol' : ticker, 
+        'limit' : '150'
+    }
+
+    json_object = call_api(url, **parameters)
+
+    data = json_object['data']
+    
+    ask_price = float(data['asks'][0][0])
+    bid_price = float(data['bids'][0][0])
+    curr_price = (bid_price + ask_price) / 2
+    lqtt = 0 
+
+    # 2% depth liquidity 
+    for order in data['asks'] : 
+        if float(order[0]) < curr_price * 1.02 : 
+            lqtt += float(order[0]) * float(order[1])
+
+    return lqtt
 
 
 def get_prices_bitget () : 
@@ -267,7 +367,7 @@ def get_prices_bitget () :
 
     data = json_object['data']
 
-    columns = ['base_ticker', 'price_usd']
+    columns = ['base_ticker', 'price_usd', 'against_lqtt']
     df = pd.DataFrame(columns=columns)
 
     # returns only the base pair for USDT pairs 
@@ -275,10 +375,39 @@ def get_prices_bitget () :
         # some tickers does not have a price 
         if ticker['buyOne'] != '0':
             if 'USDT' in  ticker['symbol'] : 
-                base_ticker = ticker['symbol'].replace('USDT', '')                
-                df.loc[len(df)] = [base_ticker, float(ticker['buyOne'])]
+                base_ticker = ticker['symbol'].replace('USDT', '')      
+                against_lqtt = call_orderbook_bitget(ticker['symbol'])          
+                df.loc[len(df)] = [base_ticker, float(ticker['buyOne']), against_lqtt]
 
     return df 
+
+
+def call_orderbook_mexc (ticker) : 
+    # orderbook here contains all the tickers, don't have to call prices separately.
+    url = 'https://api.mexc.com/api/v3/depth'
+
+    parameters = {
+        'symbol' : ticker, 
+    }
+
+    json_object = call_api(url, **parameters)
+
+    data = json_object
+
+    if not data['bids'] : 
+        return 0
+    
+    ask_price = float(data['asks'][0][0])
+    bid_price = float(data['bids'][0][0])
+    curr_price = (bid_price + ask_price) / 2
+    lqtt = 0 
+
+    # 2% depth liquidity 
+    for order in data['asks'] : 
+        if float(order[0]) < curr_price * 1.02 : 
+            lqtt += float(order[0]) * float(order[1])
+
+    return lqtt
 
 
 def get_prices_mexc () : 
@@ -286,7 +415,7 @@ def get_prices_mexc () :
 
     json_object = call_api(url)
 
-    columns = ['base_ticker', 'price_usd']
+    columns = ['base_ticker', 'price_usd', 'against_lqtt']
     df = pd.DataFrame(columns=columns)
 
     # some of the tokens give the wrong prices on MEXC
@@ -297,7 +426,8 @@ def get_prices_mexc () :
         if 'USDT' in  ticker['symbol'] : 
             base_ticker = ticker['symbol'].replace('USDT', '')
             if base_ticker not in dysfunc_tickers : 
-                df.loc[len(df)] = [base_ticker, float(ticker['price'])]
+                against_lqtt = call_orderbook_mexc(ticker['symbol'])
+                df.loc[len(df)] = [base_ticker, float(ticker['price']), against_lqtt]
 
     return df 
 
@@ -334,13 +464,13 @@ def check_price_diff (df_base, df_against, base_name, against_name, notif_trig, 
 
             profit_pct =  100 * (df_combined.loc[index, 'pct_diff']  + 1) * (1 - base_eth_ask_price_pct) - 100
 
-            abs_profit = profit_pct / 100 * df_combined.loc[index, 'lqtt_usd']
+            abs_profit = profit_pct / 100 * df_combined.loc[index, 'base_lqtt_usd']
 
             # for troubleshooting purposes 
             # print(df_combined.loc[index, 'base_ticker'], df_combined.loc[index, 'pct_diff'], base_eth_ask_price_pct, profit_pct)
             
             # conditions for notification trigger
-            if profit_pct > profit_pct_trig and abs_profit > abs_profit_trig and df_combined.loc[index, 'lqtt_usd'] > lqtt_trig: 
+            if profit_pct > profit_pct_trig and abs_profit > abs_profit_trig and df_combined.loc[index, 'base_lqtt_usd'] > lqtt_trig and df_combined.loc[index, 'against_lqtt'] > lqtt_trig : 
                 notif_trig = 1
                 message1 = '{} - {} is higher than {} by {:.2f} %.'.format(df_combined.loc[index, 'base_ticker'], base_name, against_name, abs(df_combined.loc[index, 'pct_diff']) * 100)
                 message2 = 'Absolute Profit - $ {:,.0f}'.format(abs_profit)
