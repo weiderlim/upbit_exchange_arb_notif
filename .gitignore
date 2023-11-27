@@ -10,4 +10,4 @@ test.py
 df_combined.csv 
 notes.txt
 upbit_arb_project_ssh.pem
-
+__pycache__

@@ -4,6 +4,9 @@ import time
 import pandas as pd 
 import os 
 from pymongo import MongoClient
+import threading
+import concurrent.futures
+
 
 def timing_decorator(func):
     '''
@@ -17,6 +20,19 @@ def timing_decorator(func):
         print(f"{func.__name__} took {execution_time} seconds to execute")
         return result
     return wrapper
+
+
+def thread_func (func, max_threads, *args) : 
+    """
+    Takes a function, and parameters in a list, enables threading with a cap on the number of threads running. Some API's limit the number of API queries concurrently.
+    """
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_threads) as executor:
+        results = executor.map(func, *args)    
+    
+    result_list = []
+    for result in results : 
+        result_list.append(result)
+    return result_list
 
 
 def call_api (url, **kwargs) : 
@@ -37,6 +53,7 @@ def call_api (url, **kwargs) :
     if response.status_code == 200:
         return response.json()
     else:
+        tg_notif('API Req Failed : ' + url, 'testing')
         return {"error": "API request failed"}
     
     # convert (usually response is in non JSON form) to json object first 
@@ -111,7 +128,7 @@ def call_orderbook_upbit (ticker) :
             if order['bid_price'] > curr_price * 0.98 : 
                 lqtt += order['bid_price'] * order['bid_size']
 
-        return bid_price, ask_price, lqtt
+        return ticker, bid_price, ask_price, lqtt
         
     except : 
         if json_object['name'] == 'too_many_requests' : 
@@ -147,10 +164,11 @@ def get_prices_upbit() :
         if "KRW" in i['market'] : 
             ticker_list.append (i['market']) 
 
-    for ticker in ticker_list : 
-        if ticker not in diff_ticker_list : 
-            bid_price, ask_price, lqtt = call_orderbook_upbit(ticker)
-            df.loc[len(df)] = [ticker, bid_price, ask_price, lqtt]
+    # threads the API call function, max threads is achieved through trial and error. 
+    outputs = thread_func(call_orderbook_upbit, 2, ticker_list)
+
+    for output in outputs : 
+        df.loc[len(df)] = output
 
     df['base_ticker'] = df['base_ticker'].apply(lambda x : x.replace('KRW-', '')) 
 
@@ -166,7 +184,7 @@ def get_prices_upbit() :
     return df 
     
 
-def call_orderbook_bithumb (ticker, curr_price) : 
+def call_orderbook_bithumb (ticker) : 
 
     # orderbook here contains all the tickers, don't have to call prices separately.
     url = "https://api.bithumb.com/public/orderbook/" + ticker + "_KRW"
@@ -178,6 +196,8 @@ def call_orderbook_bithumb (ticker, curr_price) :
     bid_price = float(data['bids'][0]['price']) 
     ask_price = float(data['asks'][0]['price']) 
 
+    curr_price = (bid_price + ask_price) / 2
+
     lqtt = 0 
 
     for bid in data['bids'] : 
@@ -185,7 +205,7 @@ def call_orderbook_bithumb (ticker, curr_price) :
         if float(bid['price']) > curr_price * 0.98 :
             lqtt += float(bid['price']) * float(bid['quantity']) 
 
-    return bid_price, ask_price, lqtt
+    return ticker, bid_price, ask_price, lqtt
             
 
 def get_prices_bithumb() : 
@@ -200,11 +220,17 @@ def get_prices_bithumb() :
     columns = ['base_ticker', 'bid_price_krw', 'ask_price_krw', 'base_lqtt']
     df = pd.DataFrame(columns=columns)
 
+    ticker_list = []
+
     for ticker, info in data.items() : 
         if ticker != 'date' : 
-            curr_price = float(info['closing_price'])
-            bid_price, ask_price, lqtt = call_orderbook_bithumb(ticker, curr_price)
-            df.loc[len(df)] = [ticker, bid_price, ask_price, lqtt]
+            ticker_list.append(ticker) 
+
+    # threads the API call function, max threads is achieved through trial and error. 
+    outputs = thread_func(call_orderbook_bithumb, 10, ticker_list)
+
+    for output in outputs : 
+        df.loc[len(df)] = output
 
     curr_ex_rate = get_exchange_rate()
 
@@ -230,7 +256,7 @@ def call_orderbook_binance(ticker) :
 
     # sometimes query just fails, or empty orderbook indicate they don't exist as spot anymore
     if not 'bids' in data or not data['bids']: 
-        return 0
+        return None
 
     bid_price = float(data['bids'][0][0])
     ask_price = float(data['asks'][0][0])
@@ -242,7 +268,7 @@ def call_orderbook_binance(ticker) :
         if float(order[0]) < curr_price * 1.02 : 
             lqtt += float(order[0]) * float(order[1])
 
-    return lqtt
+    return ticker, curr_price, lqtt
 
 
 def get_prices_binance() : 
@@ -265,13 +291,25 @@ def get_prices_binance() :
     # previous empty orderbooks 
     # 'BCC', 'VEN', 'PAX', 'BCHABC', 'BCHSV', 'BTT', 'USDS', 'NANO', 'MITH', 'USDSB', 'GTO', 'ERD', 'NPXS', 'COCOS', 'MFT', 'STORM', 'BEAM', 'HC', 'MCO', 'BULL', 'BEAR', 'ETHBULL']
 
+    ticker_list = []
+
     # returns only the base pair for USDT pairs 
     for ticker in json_object : 
         if 'USDT' in  ticker['symbol'] : 
             base_ticker = ticker['symbol'].replace('USDT', '')
             if base_ticker not in delisted_tickers : 
-                against_lqtt = call_orderbook_binance(ticker['symbol'])
-                df.loc[len(df)] = [base_ticker, float(ticker['price']), against_lqtt]
+                ticker_list.append(ticker['symbol'])
+
+    # threads the API call function, max threads is achieved through trial and error. 
+    outputs = thread_func(call_orderbook_binance, 20, ticker_list)
+
+    for output in outputs : 
+        df.loc[len(df)] = output
+
+    # remove rows which does not have entries 
+    df.dropna(inplace=True)
+
+    df['base_ticker'] = df['base_ticker'].apply(lambda x : x.replace('USDT', ''))
 
     return df 
 
@@ -291,7 +329,7 @@ def call_orderbook_bybit(ticker) :
     data = json_object['result']
 
     if not data : 
-        return 0 
+        return None
 
     for order in data : 
         if order['side'] == 'Buy' : 
@@ -312,7 +350,7 @@ def call_orderbook_bybit(ticker) :
             if float(order['price']) < curr_price * 1.02 : 
                 lqtt += float(order['price']) * float(order['size'])
 
-    return lqtt
+    return ticker, curr_price, lqtt
 
 
 def get_prices_bybit () : 
@@ -325,11 +363,22 @@ def get_prices_bybit () :
     columns = ['base_ticker', 'price_usd', 'against_lqtt']
     df = pd.DataFrame(columns=columns)
 
+    ticker_list = []
+
     # returns only the base pair for USDT pairs 
     for ticker in data : 
         if 'USDT' in  ticker['symbol'] : 
-            against_lqtt = call_orderbook_bybit(ticker['symbol'])
-            df.loc[len(df)] = [ticker['symbol'].replace('USDT', ''), float(ticker['lastPrice']), against_lqtt]
+            ticker_list.append(ticker['symbol']) 
+
+    # threads the API call function, max threads is achieved through trial and error. 
+    outputs = thread_func(call_orderbook_bybit, 20, ticker_list)
+
+    for output in outputs : 
+        df.loc[len(df)] = output
+
+    df.dropna(inplace=True)
+
+    df['base_ticker'] = df['base_ticker'].apply(lambda x : x.replace('USDT', ''))
 
     return df 
 
@@ -347,6 +396,10 @@ def call_orderbook_bitget (ticker) :
 
     data = json_object['data']
     
+    # dealing with empty data
+    if not data['asks']: 
+        return None
+
     ask_price = float(data['asks'][0][0])
     bid_price = float(data['bids'][0][0])
     curr_price = (bid_price + ask_price) / 2
@@ -357,7 +410,7 @@ def call_orderbook_bitget (ticker) :
         if float(order[0]) < curr_price * 1.02 : 
             lqtt += float(order[0]) * float(order[1])
 
-    return lqtt
+    return ticker, curr_price, lqtt
 
 
 def get_prices_bitget () : 
@@ -370,14 +423,23 @@ def get_prices_bitget () :
     columns = ['base_ticker', 'price_usd', 'against_lqtt']
     df = pd.DataFrame(columns=columns)
 
-    # returns only the base pair for USDT pairs 
+    ticker_list = []
+
     for ticker in data : 
         # some tickers does not have a price 
         if ticker['buyOne'] != '0':
             if 'USDT' in  ticker['symbol'] : 
-                base_ticker = ticker['symbol'].replace('USDT', '')      
-                against_lqtt = call_orderbook_bitget(ticker['symbol'])          
-                df.loc[len(df)] = [base_ticker, float(ticker['buyOne']), against_lqtt]
+                ticker_list.append(ticker['symbol'])
+
+    # threads the API call function, max threads is achieved through trial and error. 
+    outputs = thread_func(call_orderbook_bitget, 2, ticker_list)
+
+    for output in outputs : 
+        df.loc[len(df)] = output
+
+    df.dropna(inplace=True)
+
+    df['base_ticker'] = df['base_ticker'].apply(lambda x : x.replace('USDT', ''))
 
     return df 
 
@@ -394,8 +456,11 @@ def call_orderbook_mexc (ticker) :
 
     data = json_object
 
+    print(ticker)
+    print(data) 
+
     if not data['bids'] : 
-        return 0
+        return None
     
     ask_price = float(data['asks'][0][0])
     bid_price = float(data['bids'][0][0])
@@ -407,7 +472,7 @@ def call_orderbook_mexc (ticker) :
         if float(order[0]) < curr_price * 1.02 : 
             lqtt += float(order[0]) * float(order[1])
 
-    return lqtt
+    return ticker, curr_price, lqtt
 
 
 def get_prices_mexc () : 
@@ -421,13 +486,26 @@ def get_prices_mexc () :
     # some of the tokens give the wrong prices on MEXC
     dysfunc_tickers = ['GMT', 'GAS', 'META', 'TITAN', 'ALT']
 
+    ticker_list = []
+
+    print(json_object)
+
     # returns only the base pair for USDT pairs 
     for ticker in json_object : 
-        if 'USDT' in  ticker['symbol'] : 
+        if 'USDT' in ticker['symbol'] : 
             base_ticker = ticker['symbol'].replace('USDT', '')
             if base_ticker not in dysfunc_tickers : 
-                against_lqtt = call_orderbook_mexc(ticker['symbol'])
-                df.loc[len(df)] = [base_ticker, float(ticker['price']), against_lqtt]
+                ticker_list.append(ticker['symbol'])
+
+    # threads the API call function, max threads is achieved through trial and error. 
+    outputs = thread_func(call_orderbook_mexc, 10, ticker_list)
+
+    for output in outputs : 
+        df.loc[len(df)] = output
+
+    df.dropna(inplace=True)
+
+    df['base_ticker'] = df['base_ticker'].apply(lambda x : x.replace('USDT', ''))
 
     return df 
 
@@ -497,11 +575,11 @@ def execute(destination) :
     df_upbit = get_prices_upbit() 
     df_bithumb = get_prices_bithumb()
 
-    # exchanges compared to 
+    # # exchanges compared to 
     df_binance = get_prices_binance() 
     df_bybit = get_prices_bybit() 
     df_bitget = get_prices_bitget()
-    df_mexc = get_prices_mexc()
+    # df_mexc = get_prices_mexc()
 
     # korean exchanges where the prices are more different compared to the rest of the market
     base_exchanges = [
@@ -528,11 +606,11 @@ def execute(destination) :
         {
             'exchange_name' : 'Bitget',
             'exchange_df' : df_bitget
-        },
-        {
-            'exchange_name' : 'MEXC',
-            'exchange_df' : df_mexc
         }
+        # {
+        #     'exchange_name' : 'MEXC',
+        #     'exchange_df' : df_mexc
+        # }
     ]
     
     for base in base_exchanges : 
@@ -545,6 +623,17 @@ def execute(destination) :
 
 ####################################### for lambda deployment just copy everything above. #######################################
 
+@timing_decorator
+def test () : 
+    # print(get_prices_upbit()) 
+    # print(get_prices_bithumb()) 
+    # print(get_prices_binance()) 
+    # print(get_prices_bybit()) 
+    # print(get_prices_bitget()) 
+    # print(get_prices_mexc()) 
+    print('hi')
+
+
 # testing parameters
 if __name__ == '__main__' : 
     # the main difference between loading the environment variables. 
@@ -556,3 +645,4 @@ if __name__ == '__main__' :
     destination = 'testing'
     
     execute(destination) 
+    # test()
